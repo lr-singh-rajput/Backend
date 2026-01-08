@@ -101,7 +101,7 @@ userSchema.methods.generateRefreshToken = function () {
         { 
             expiresIn: process.env.REFRESH_TOKEN_EXPIRY 
 
-         } // token valid for 10 day 
+         } // token valid for 10 day   ...
     );
 
 };  
@@ -113,4 +113,4 @@ export const User = mongoose.model('User', userSchema);
 
 //COLLECTION NAME MONGOOSE WILL CREATE plural form 'users' IN MONGODB DATABASE
 // LIKE - User -----> users 
-// automatically handled by mongoose
+// automatically handled by mongoose  ...

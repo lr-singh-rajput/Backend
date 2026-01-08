@@ -50,3 +50,5 @@ const Video = mongoose.model('Video', videoSchema);
 //COLLECTION NAME MONGOOSE WILL CREATE plural form 'videos' IN MONGODB DATABASE
 // LIKE -> Video -----> videos 
 // automatically handled by mongoose
+
+// ...
