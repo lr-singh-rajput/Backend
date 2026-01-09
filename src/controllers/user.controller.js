@@ -1,7 +1,7 @@
   import {asyncHandler} from '../utils/asyncHandler.js';
   import{ApiError} from '../utils/ApiError.js'; 
   import { User } from '../models/user.model.js';
-  import { uploadOnCloudinary, uploadToCloudinary } from '../utils/cloudinary.js';
+  import { uploadOnCloudinary } from '../utils/cloudinary.js';
   import { ApiResponse } from '../utils/ApiResponse.js';
 
 
@@ -49,7 +49,7 @@
 
 
     // Step 3: Check if user already exists
-     existedUser = User.findOne({
+     const existedUser =  await User.findOne({
       $or: [{email}, {username}]
    //   $or: [{email: email.toLowerCase()}, {username: username.toLowerCase()}]
   })
@@ -63,31 +63,46 @@
     // Step 4: Check for images only avtar is required
 
     // chack if avater and backegraund  file is present in local folder public/temp
-    const avatarLocalPath = req.files?.avater[0]?.path;
-    const coverImageLocalPath = req.files?.coverImage[0]?.path;
+    const avatarLocalPath = req.files?.avatar?.[0]?.path;
+    const coverImageLocalPath = req.files?.coverImage?.[0]?.path;
+
+    /*
+
+        const coverImageLocalPath = req.files?.coverImage?.[0]?.path;
+
+                  < ---- or ----->
+
+      let coverImageLocalPath;
+      if(req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length > 0){
+        coverImageLocalPath = req.files.coverImage[0].path;
+      }
+
+    */
 
     // avater is required
-    if(!avatarLocalPath){ 
-      //res.status(400);
-      throw new ApiError(400, "Avater image is required");
-    }
+if(!avatarLocalPath){  
+  throw new ApiError(400, "Avater image is required");
+}
+    
 
     // Step 5: Upload images to cloudinary
 
     const avatar = await uploadOnCloudinary(avatarLocalPath);
+   // console.log("Avatar upload response:" resonse,); // Debug log
+    
     const coverImage = await uploadOnCloudinary(coverImageLocalPath);
 
     if (!avatar){
-      throw new ApiError(400, "Avater file is required");
+      throw new ApiError(400, "Avatar file upload failed on cloudinary");
     }
 
     // Step 6: Create user object - create entry in db
     const user = await User.create({
       fullName,
       email,
-      username: username.lowercase(),
+      username: username,
       password,
-      avater: avatar.url,
+      avatar: avatar?.url || "" ,
       coverImage: coverImage?.url || "",
 
 
