@@ -1,11 +1,35 @@
   import {asyncHandler} from '../utils/asyncHandler.js';
   import{ApiError} from '../utils/ApiError.js'; 
-  import { User } from '../models/user.model.js';
+  import { User, User } from '../models/user.model.js';
   import { uploadOnCloudinary } from '../utils/cloudinary.js';
   import { ApiResponse } from '../utils/ApiResponse.js';
 
 
 
+
+// generate token and save refresh token in mongoDB
+const generateAccessAndRefreshToken = async(userId)=>
+  {
+try{
+    const user = await User.findById(userId)
+
+    // methods 
+    const accessToken  = user.generateAccessToken()
+    const refreshToken =  user.generateRefreshToken()
+
+    //save refresh token in database
+    user.refreshToken = refreshToken
+     await user.save({validateBeforeSave: false}) // validation off not update pass and any field and not validation
+
+    return {accessToken,refreshToken}
+
+  } catch(error){
+      throw new ApiError(500, "Something went wrong while generate referesh and Access token")
+  }
+}
+
+
+// register user
   const registerUser = asyncHandler(async (req, res) => {
     // all steps 
     //1 get user details from frontend
@@ -149,4 +173,110 @@ new ApiResponse(
 
   // })
   }); 
-export { registerUser };
+
+  // login user
+const loginUser = asyncHandler(async(res,req)=>{
+
+  //1 req body -> data
+  //2 USERNAME OR EMAIL
+  //3 FIND THE USER 
+  //4 PASSWORD CHECK
+  //5 Access and refresh token
+  //6 send cookie 
+  
+
+// Step 1 req body -> data  
+  const {email,username,password} = req.body
+
+
+  //Step 2 chack validation username or email
+  if(!username || !email){
+    throw new ApiError(
+      400,"username or  email is required"
+    )
+  }
+
+  // Step 3 find the user {username or email}
+ const user = await User.findOne({
+  $or:[{username},{email}]
+})
+
+if (!user){
+  throw new ApiError(
+    404,
+    "User does not exist"
+  )
+}
+
+  // Step 4 Chackn The Password 
+  //User ->  mongoos {mongoDB(database)} data 
+  //user -> user send login request - this data  
+  
+  
+  const isPasswordvalid  = await user.isPasswordCorrect(password ) // this pass user send in login request (user)
+
+
+if (!isPasswordvalid){
+  throw new ApiError(
+    401,
+    "Invalid user credentials"
+  )
+}
+
+// Step 5 Access A Refresh Token generate 
+const {accessToken,refreshToken} = await generateAccessAndRefreshToken(user._id)
+
+
+// Step 6  send cookie 
+
+// step 3 me user hai us ke pass refresh tokan nhi hai  ya to update kare ya new user query dale or data mangwaye
+// hamere pass step 3 wale user ka hi refrensh hai abhi
+// agar database par query karna expensive hai to  ise update kar 
+// agar mhi hai to findById karke new user mangwa le 
+
+const loggedInUser  = await User.findById(user._id)
+                      .select(" -password -refreshTokens") // ye dono nhi jayegi field request me
+
+//  ye shirf server se hi modify hogi frontent se nhi  
+const options = {
+    httpOnly : true,
+    secure: true
+  }                    
+
+return res
+.status(200)
+// set accesToken and refreshToken in cookie 
+.cookie("accesToken", accessToken, options)
+.cookie("refreshToken", refreshToken, options)
+.json(
+  new ApiResponse(
+    200,
+    {
+      user: loggedInUser,accessToken,refreshToken
+      // accessToken,refreshToken send for user save in local storage 
+      // and mobile Application not set cookie 
+    },
+    "User logged In Successfully"
+  )
+)
+
+
+})
+
+
+// logOut User
+const logoutUser = asyncHandler (async(req,res)=>{
+
+  //1 cookie reset
+  //2 generateAccessAndRefreshToken reset
+
+  
+
+
+})
+
+export { 
+  registerUser,
+  loginUser,
+  logoutUser
+};
