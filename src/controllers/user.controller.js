@@ -270,9 +270,48 @@ const logoutUser = asyncHandler (async(req,res)=>{
   //1 cookie reset
   //2 generateAccessAndRefreshToken reset
 
-  
+   await User.findByIdAndUpdate(
+    req.user._id,
+      {
+        $set:{
+          refreshTokens: undefined
+        }
+      },
+      {
+        new: true
+      }
+
+  // req.user._id,// from verifyJWT middleware
+    // {refreshTokens: null}, // remove refresh token from db
+    // {new: true} // return updated user 
+   )
+    // Step 1 cookie reset
+   const options = {  // cookie options 
+    httpOnly : true, // client side script access nhi kar sakta
+    secure: true // only send over https
+  }    
+
+  return res
+  .status(200)
+  // .cookie("accessToken","",{...options, maxAge:0}) // remove cookie ,maxAge 0 kar do 
+  // .cookie("refreshToken","",{...options, maxAge:0}) // maxAge 0 kar diye kyo ki cookie ko empty string de diya hai
+  .clearCookie("accessToken", options) // remove access token ,options  for secure and httpOnly,not modifiable from client side script
+  .clearCookie("refreshToken", options) // remove refresh token 
+  .json(
+    new ApiResponse(
+      200,
+      {},
+      "User logged out successfully"
+    )
+  )
+
+     
 
 
+
+     
+
+   
 })
 
 export { 
