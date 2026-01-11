@@ -1,13 +1,38 @@
   import {asyncHandler} from '../utils/asyncHandler.js';
   import{ApiError} from '../utils/ApiError.js'; 
-  import { User, User } from '../models/user.model.js';
+  import { User } from '../models/user.model.js';
   import { uploadOnCloudinary } from '../utils/cloudinary.js';
   import { ApiResponse } from '../utils/ApiResponse.js';
+  import jwt from 'jsonwebtoken';  
 
 
 
 
 // generate token and save refresh token in mongoDB
+  /* Cookie options (module-level):
+   - `cookieOptionsDev`: for local development (HTTP, same-site requests).
+   - `cookieOptionsProd`: for production hosting (HTTPS, cross-site cookie support).
+
+  The code will pick `COOKIE_OPTIONS` based on `NODE_ENV` so both
+  `loginUser` and `logoutUser` can use the same settings.
+  */
+  const cookieOptionsDev = {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: '/'
+  }
+
+  const cookieOptionsProd = {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    path: '/'
+  }
+
+  const COOKIE_OPTIONS = process.env.NODE_ENV === 'production' ? cookieOptionsProd : cookieOptionsDev;// module level constant 
+
+  // generate access and refresh token function
 const generateAccessAndRefreshToken = async(userId)=>
   {
 try{
@@ -175,7 +200,7 @@ new ApiResponse(
   }); 
 
   // login user
-const loginUser = asyncHandler(async(res,req)=>{
+  const loginUser = asyncHandler(async (req, res) => {
 
   //1 req body -> data
   //2 USERNAME OR EMAIL
@@ -190,11 +215,21 @@ const loginUser = asyncHandler(async(res,req)=>{
 
 
   //Step 2 chack validation username or email
-  if(!username || !email){
+  // && dono hona chahiye 
+  if(!username && !email){ 
     throw new ApiError(
       400,"username or  email is required"
     )
   }
+
+
+  // here is an alternative if above code
+  // || is condition me dono me se ek hona chahiye
+  //  if(!username || !email){ 
+  //   throw new ApiError(
+  //     400,"username or  email is required"
+  //   )
+  // }
 
   // Step 3 find the user {username or email}
  const user = await User.findOne({
@@ -238,16 +273,26 @@ const loggedInUser  = await User.findById(user._id)
                       .select(" -password -refreshTokens") // ye dono nhi jayegi field request me
 
 //  ye shirf server se hi modify hogi frontent se nhi  
-const options = {
-    httpOnly : true,
-    secure: true
-  }                    
+/* Cookie options (both kept here):
+ - `cookieOptionsDev`: for local development (HTTP, same-site requests).
+ - `cookieOptionsProd`: for production hosting (HTTPS, cross-site cookie support).
+
+When hosting in production (frontend may be on different origin):
+ - Use `cookieOptionsProd` (secure: true, sameSite: 'none').
+ - Ensure your site uses HTTPS and client requests include credentials.
+
+When developing locally (http://localhost):
+ - Use `cookieOptionsDev` (secure: false, sameSite: 'lax') so the browser sends cookies over HTTP.
+
+Runtime selection below automatically chooses the correct options based on `NODE_ENV`.
+*/
+// use module-level COOKIE_OPTIONS declared above
 
 return res
 .status(200)
 // set accesToken and refreshToken in cookie 
-.cookie("accesToken", accessToken, options)
-.cookie("refreshToken", refreshToken, options)
+.cookie("accessToken", accessToken, COOKIE_OPTIONS)
+.cookie("refreshToken", refreshToken, COOKIE_OPTIONS)
 .json(
   new ApiResponse(
     200,
@@ -286,24 +331,38 @@ const logoutUser = asyncHandler (async(req,res)=>{
     // {new: true} // return updated user 
    )
     // Step 1 cookie reset
-   const options = {  // cookie options 
-    httpOnly : true, // client side script access nhi kar sakta
-    secure: true // only send over https
-  }    
+    // Explicitly expire cookies (helps some clients and tools like Postman)
+    res.cookie("accessToken", "", { ...COOKIE_OPTIONS, maxAge: 0 })
+    res.cookie("refreshToken", "", { ...COOKIE_OPTIONS, maxAge: 0 })
+    res.clearCookie("accessToken", COOKIE_OPTIONS) // remove access token ,options for secure and httpOnly
+    res.clearCookie("refreshToken", COOKIE_OPTIONS) // remove refresh token 
 
-  return res
-  .status(200)
-  // .cookie("accessToken","",{...options, maxAge:0}) // remove cookie ,maxAge 0 kar do 
-  // .cookie("refreshToken","",{...options, maxAge:0}) // maxAge 0 kar diye kyo ki cookie ko empty string de diya hai
-  .clearCookie("accessToken", options) // remove access token ,options  for secure and httpOnly,not modifiable from client side script
-  .clearCookie("refreshToken", options) // remove refresh token 
-  .json(
-    new ApiResponse(
-      200,
-      {},
-      "User logged out successfully"
-    )
-  )
+    // Prepare debug info (only include sensitive user info in dev or when explicitly requested)
+    const logoutInfo = {};
+    if (process.env.NODE_ENV !== 'production' || req.query?.debug === 'true') {
+      logoutInfo.user = {
+        _id: req.user?._id,
+        email: req.user?.email,
+        username: req.user?.username
+      };
+    }
+
+    // Log to server console to help debugging
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Logout executed for user:', logoutInfo.user || { id: req.user?._id });
+      console.log('COOKIE_OPTIONS used:', COOKIE_OPTIONS);
+      console.log('Set-Cookie headers about to be sent:', res.getHeader('Set-Cookie'));
+    }
+
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          logoutInfo,
+          "User logged out successfully"
+        )
+      )
 
      
 
@@ -314,8 +373,64 @@ const logoutUser = asyncHandler (async(req,res)=>{
    
 })
 
+
+
+// refreshAndAccessToken gerate new acces token
+  const refreshAccessToken = asyncHandler(async(res,req)=>{
+    const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken
+
+
+    if(!incomingRefreshToken){
+      throw new ApiError(401,"unauthorized required")
+    }
+try {
+  
+       const decodedToken = jwt.verify(
+          incomingRefreshToken,
+          process.env.REFRESH_TOKEN_SECRET,
+          )
+  
+          const user = await User.findById(decodedToken?._id)
+  if(!user){
+    throw new ApiError(401,"unauthorized user not found")
+  }
+  
+  
+  if (incomingRefreshToken !== user?.refreshToken){
+    throw new ApiError(
+      401,
+      "Refresh token is expired or used"
+    )
+  }
+  
+  const options ={
+  httpOnly : true,
+  //secure: true
+  
+  }
+  
+  const {accessToken,newRefreshToken} = await generateAccessAndRefreshToken(user._id)
+  
+  return res.status(200)
+            .cookie("accessToken",accessToken,options )
+            .cookie("refreshToken", newRefreshToken , options)
+            .json(
+              new ApiResponse(
+                200,
+                {accessToken, refreshToken: newRefreshToken},
+                "Access Token refeshed , genrated new token"
+              )
+            )
+} catch (error) {
+  throw new ApiError(401, error?.message || "Invalid refresh token")
+}
+})
+      
+
 export { 
   registerUser,
   loginUser,
-  logoutUser
-};
+  logoutUser,
+  refreshAccessToken
+}
+

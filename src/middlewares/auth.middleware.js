@@ -1,5 +1,5 @@
-import { ApiError } from "../utils/ApiError";
-import { asyncHandler } from "../utils/asyncHandler";   
+import { ApiError } from "../utils/ApiError.js";
+import { asyncHandler } from "../utils/asyncHandler.js";   
 import jwt from "jsonwebtoken";
 import { User } from "../models/user.model.js";
 
@@ -10,16 +10,23 @@ import { User } from "../models/user.model.js";
 // chack user is logIn or not , attach user to request object 
 // use logout,like ,comment,create post routes and etc 
 
-// _ --> res
- export const verifyJWT  = asyncHandler(async(req,_,next)=> // _ --- ignore res
+// _   -->  res
+// _ --- ignore res
+ export const verifyJWT  = asyncHandler(async(req,_,next)=> 
 {try {
     
-       const token =  req.cookies?.accessToken || req.header
-       ("Authorization")?.replace("Bearer ", "")
+    // Debug: print incoming cookies in non-production to help diagnose missing cookies
+    if (process.env.NODE_ENV !== 'production') {
+        console.log('verifyJWT incoming cookies:', req.cookies);
+    }
+
+    // Accept normal `accessToken`, tolerate common typo `accesToken`,
+    // and finally fallback to Authorization header.
+    const token =  req.cookies?.accessToken || req.cookies?.accesToken || req.header("Authorization")?.replace("Bearer ", "")
         //req.header("Authorization")  kyo ki mobile app me cookie nhi hoti hai wo header me send karega
         if(!token){
             throw new ApiError(
-                401, "unauthorozed request"
+                401, "unauthorozed request token not found"
             )
         }
     
@@ -27,7 +34,7 @@ import { User } from "../models/user.model.js";
         const decodedToken = await jwt.verify(token,process.env.
             ACCESS_TOKEN_SECRET)
     
-             const user =   await User.findById(decodedToken?._id).
+             const user =   await User.findById(decodedToken?.userId).
                     select("-password -refreshTokens") // exclude password and refresh token
              if(!user){
                 throw new ApiError(
