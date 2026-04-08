@@ -5,7 +5,7 @@ import { app } from "./app.js";
 
 
 dotenv.config({
-    path : "./env"
+    path : "./.env"
 });
 
 
@@ -18,8 +18,9 @@ connectDB()
 })
 
 .catch((error) => {   
-        console.error(" connection fails to connect MongoDB !!:", error);
- });
+        console.error("❌ connection fails to connect MongoDB !!:", error);
+        process.exit(1); // Exit process with failure code
+    });
 
 
 

@@ -18,14 +18,14 @@
   */
   const cookieOptionsDev = {
     httpOnly: true,
-    secure: true,
+    secure: false,// dev mode me HTTPS nahi hota
     sameSite: 'lax',
     path: '/'
   }
 
   const cookieOptionsProd = {
     httpOnly: true,
-    secure: true,
+    secure: true,// production me HTTPS mandatory
     sameSite: 'none',
     path: '/'
   }
@@ -99,7 +99,7 @@ try{
 
     // Step 3: Check if user already exists
      const existedUser =  await User.findOne({
-      $or: [{email}, {username}]
+      $or: [{email: email.toLowerCase()}, {username:username.toLowerCase()}]
    //   $or: [{email: email.toLowerCase()}, {username: username.toLowerCase()}]
   })
 
@@ -139,8 +139,8 @@ if(!avatarLocalPath){
     const avatar = await uploadOnCloudinary(avatarLocalPath);
    // console.log("Avatar upload response:" resonse,); // Debug log
     
-    const coverImage = await uploadOnCloudinary(coverImageLocalPath);
-
+   // const coverImage = await uploadOnCloudinary(coverImageLocalPath);
+    const coverImage = coverImageLocalPath ? await uploadOnCloudinary(coverImageLocalPath) : null;
     if (!avatar){
       throw new ApiError(400, "Avatar file upload failed on cloudinary");
     }
@@ -148,8 +148,8 @@ if(!avatarLocalPath){
     // Step 6: Create user object - create entry in db
     const user = await User.create({
       fullName,
-      email,
-      username: username,
+      email: email.toLowerCase(),
+       username: username.toLowerCase(),
       password,
       avatar: avatar?.url || "" ,
       coverImage: coverImage?.url || "",
@@ -161,10 +161,20 @@ if(!avatarLocalPath){
     });
 
 // Step 7: Remove password and refresh token field from response
+
+// Remove sensitive fields
+
+//  const userResponse = user.toObject(); 
+// delete userResponse.password; 
+// delete userResponse.refreshToken; 
+// // Return response 
+// res.status(201)
+// .json( new ApiResponse(201, userResponse, "User registered successfully") );
+
 // check user are created successfully and not 
 // not recommended way,mongoDB call increase
 const createdUser = await User.findById(user._id).select(
-  '-password -refreshTokens'  //this field are not included in response
+  '-password -refreshToken'  //this field are not included in response
 );
 
 if(!createdUser){
@@ -270,7 +280,7 @@ const {accessToken,refreshToken} = await generateAccessAndRefreshToken(user._id)
 // agar mhi hai to findById karke new user mangwa le 
 
 const loggedInUser  = await User.findById(user._id)
-                      .select(" -password -refreshTokens") // ye dono nhi jayegi field request me
+                      .select(" -password -refreshToken") // ye dono nhi jayegi field request me
 
 //  ye shirf server se hi modify hogi frontent se nhi  
 /* Cookie options (both kept here):
@@ -316,15 +326,9 @@ const logoutUser = asyncHandler (async(req,res)=>{
   //2 generateAccessAndRefreshToken reset
 
    await User.findByIdAndUpdate(
-    req.user._id,
-      {
-        $set:{
-          refreshTokens: undefined
-        }
-      },
-      {
-        new: true
-      }
+      req.user._id,
+      { $set:{refreshTokens: undefined}},
+      {new: true}
 
   // req.user._id,// from verifyJWT middleware
     // {refreshTokens: null}, // remove refresh token from db
@@ -376,12 +380,12 @@ const logoutUser = asyncHandler (async(req,res)=>{
 
 
 // refreshAndAccessToken gerate new acces token
-  const refreshAccessToken = asyncHandler(async(res,req)=>{
+  const refreshAccessToken = asyncHandler(async(req,res)=>{
     const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken
 
 
     if(!incomingRefreshToken){
-      throw new ApiError(401,"unauthorized required")
+      throw new ApiError(401,"Unauthorized: refresh token required")
     }
 try {
   
@@ -392,33 +396,33 @@ try {
   
           const user = await User.findById(decodedToken?._id)
   if(!user){
-    throw new ApiError(401,"unauthorized user not found")
+    throw new ApiError(401,"unauthorized : user not found")
   }
   
   
   if (incomingRefreshToken !== user?.refreshToken){
     throw new ApiError(
       401,
-      "Refresh token is expired or used"
+      "Refresh token is expired or Invalid"
     )
   }
   
-  const options ={
-  httpOnly : true,
+  // const options ={
+  //httpOnly : true,
   //secure: true
-  
-  }
+  //}
   
   const {accessToken,newRefreshToken} = await generateAccessAndRefreshToken(user._id)
   
   return res.status(200)
-            .cookie("accessToken",accessToken,options )
-            .cookie("refreshToken", newRefreshToken , options)
+          //  .cookie("accessToken",accessToken,options )
+          .cookie("accessToken", accessToken, COOKIE_OPTIONS) 
+          .cookie("refreshToken", newRefreshToken, COOKIE_OPTIONS)
             .json(
               new ApiResponse(
                 200,
                 {accessToken, refreshToken: newRefreshToken},
-                "Access Token refeshed , genrated new token"
+                "Access Token refeshed , generated new token"
               )
             )
 } catch (error) {
